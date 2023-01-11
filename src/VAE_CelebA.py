@@ -197,35 +197,6 @@ class VAE_CELEBA(Module):
         
         return x_hat
 
-#%% Simple test
-
-"""
-import torchvision.datasets as dset
-import torchvision.transforms as transforms
-
-
-dataroot = "../../Data/CelebA/celeba" #Directory for dataset
-batch_size = 2 #Batch size duiring training
-image_size = 64 #Image size
-nc = 3 #Channels
-vae = VAE_CELEBA() #Model
-
-dataset = dset.ImageFolder(root=dataroot,
-                           transform=transforms.Compose([
-                               transforms.Resize(image_size),
-                               transforms.CenterCrop(image_size),
-                               transforms.ToTensor(),
-                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                           ]))
-
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                         shuffle=True)
-
-for x in dataloader:
-    test = vae(x[0])
-    break
-"""
-
 
 
 

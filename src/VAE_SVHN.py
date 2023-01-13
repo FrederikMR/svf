@@ -169,14 +169,13 @@ class VAE_SVHN(Module):
         # compute the ELBO with and without the beta parameter: 
         # `L^\beta = E_q [ log p(x|z) - \beta * D_KL(q(z|x) | p(z))`
         # where `D_KL(q(z|x) | p(z)) = log q(z|x) - log p(z)`
-        kld = self.kl_divergence(z, mu, std)
-        rec_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
+        kld = self.kl_divergence(z, mu, std).mean()
+        rec_loss = -self.gaussian_likelihood(x_hat, self.log_scale, x).mean()
         
         # elbo
-        elbo = (kld - rec_loss)
-        elbo = elbo.mean()
+        elbo = kld + rec_loss
         
-        return z, x_hat, mu, std, kld.mean(), -rec_loss.mean(), elbo
+        return z, x_hat, mu, std, kld, rec_loss, elbo
     
     def h(self, x):
         

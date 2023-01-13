@@ -19,6 +19,7 @@ https://github.com/sksq96/pytorch-vae/blob/master/vae.py
 
 from torch.nn import (
     Module, 
+    Sequential,
     Conv2d, 
     BatchNorm2d, 
     Linear, 
@@ -41,14 +42,51 @@ from torch.distributions import (
     Normal
     )
 
-#%% VAE for 3d surfaces using article network with variance and probabilities
+from typing import List, Any
 
-#The training script should be modified for the version below.
-class VAE_CELEBA(Module):
+#%% Deep Convolutional Variational-Autoencoder
+
+class DCVAE(Module):
     def __init__(self,
-                 latent_dim = 32
+                 act_h = [ELU, ELU, ELU, ELU, ELU],
+                 channels_h:List[int] = [3, 32, 32, 64],
+                 kernel_size_h:List[int] = [4, 4, 4, 4],
+                 stride_h:List[int] = [2, 2, 2, 2],
+                 padding_h:List[int] = [0, 0, 0, 0],
+                 dilation_h:List[int] = [1, 1, 1, 1],
+                 groups_h:List[int] = [1, 1, 1, 1],
+                 padding_mode_h = ['zeros', 'zeros', 'zeros', 'zeros'],
+                 bias_h:List[bool] = [False, False, False, False],
+                 batch_norm_h:List[bool] = [True, True, True, True],
+                 latent_dim:int = 32,
+                 act_g = [ELU, ELU, ELU, ELU, ELU],
+                 channels_g = [64, 64, 32, 32, 32, 3],
+                 kernel_size_g = [6, 4, 4, 4, 3],
+                 stride_g = [2, 2, 2, 2, 1],
+                 padding_g:List[int] = [0, 0, 0, 0],
+                 dilation_g:List[int] = [1, 1, 1, 1],
+                 batch_norm_g:List[bool] = [True, True, True, True],
                  ):
-        super(VAE_CELEBA, self).__init__()
+        super(DCVAE, self).__init__()
+        
+        self.latent_dim = 32
+        
+        #Encoder
+        self.act_h = act_h
+        self.channels_h = channels_h
+        self.kernel_size_h = kernel_size_h
+        self.stride_h = stride_h
+        self.bias_h = bias_h
+        self.batch_norm_h = batch_norm_h
+        self.num_layers_h = len(act_h)
+        
+        #Decoder
+        self.act_g = act_g
+        self.channels_g = channels_g
+        self.kernel_size_g = kernel_size_g
+        self.stride_g = stride_g
+        self.batch_norm_g = batch_norm_g
+        self.num_layers_h = len(act_g)
                 
         #Encoder
         self.h_con1 = Conv2d(in_channels = 3, out_channels = 32, kernel_size = 4, 
@@ -102,6 +140,34 @@ class VAE_CELEBA(Module):
         
         # for the gaussian likelihood
         self.log_scale = Parameter(Tensor([0.0]))
+        
+    def linear_dim(self):
+        
+        C
+        for i in range(1, self.num_layers_h):
+            
+        return
+        
+    def h_layers(self):
+        
+        layers = []
+        for i in range(1, self.num_layers_h):
+            
+            conv=Conv2d(in_channels = self.channels_h[i-1],
+                        out_channels = self.channels_h[i],
+                        kernel_size = self.ks_h[i-1],
+                        stride = self.stride_h[i-1],
+                        dilation = self.dilation_h[i-1],
+                        groups = self.groups_h[i-1],
+                        bias = self.bias_h[i-1],
+                        padding_mode = self.padding_mode[i-1])
+
+            layers.append(conv)
+        
+            if self.batch_norm_h[i-1]:
+                layers.append(BatchNorm2d(self.channels_h[i]))
+            
+        return Sequential(*layers)
                 
     def encoder(self, x):
                 
@@ -177,13 +243,13 @@ class VAE_CELEBA(Module):
         # compute the ELBO with and without the beta parameter: 
         # `L^\beta = E_q [ log p(x|z) - \beta * D_KL(q(z|x) | p(z))`
         # where `D_KL(q(z|x) | p(z)) = log q(z|x) - log p(z)`
-        kld = self.kl_divergence(z, mu, std)
-        rec_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
+        kld = self.kl_divergence(z, mu, std).mean()
+        rec_loss = -self.gaussian_likelihood(x_hat, self.log_scale, x).mean()
         
         # elbo
-        elbo = (kld - rec_loss).mean()
+        elbo = kld + rec_loss
         
-        return z, x_hat, mu, std, kld.mean(), -rec_loss.mean(), elbo
+        return z, x_hat, mu, std, kld, rec_loss, elbo
             
     def h(self, x):
         

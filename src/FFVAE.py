@@ -67,30 +67,30 @@ class Encoder(Module):
                                                 
     def encoder_layers(self):
         
-        layer = []
+        layers = []
         for i in range(1, self.numh_layers):
-            layer.append(Linear(self.ffh_layer[i-1], self.ffh_layer[i]))
-            layer.append(self.ffh_act[i-1]())
+            layers.append(Linear(self.ffh_layer[i-1], self.ffh_layer[i]))
+            layers.append(self.ffh_act[i-1]())
             
-        return Sequential(*layer)
+        return Sequential(*layers)
     
     def mu_layers(self):
         
-        layer = []
+        layers = []
         for i in range(1, self.nummu_layers):
-            layer.append(Linear(self.ffmu_layer[i-1], self.ffmu_layer[i]))
-            layer.append(self.ffmu_act[i-1]())
+            layers.append(Linear(self.ffmu_layer[i-1], self.ffmu_layer[i]))
+            layers.append(self.ffmu_act[i-1]())
             
-        return Sequential(*layer)
+        return Sequential(*layers)
     
     def var_layers(self):
         
-        layer = []
+        layers = []
         for i in range(1, self.numvar_layers):
-            layer.append(Linear(self.fc_var[i-1], self.fc_var[i]))
-            layer.append(self.fc_var_act[i-1]())
+            layers.append(Linear(self.fc_var[i-1], self.fc_var[i]))
+            layers.append(self.fc_var_act[i-1]())
             
-        return Sequential(*layer)
+        return Sequential(*layers)
     
     def reparametrize(self, mu, std):
         

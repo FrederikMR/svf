@@ -35,8 +35,7 @@ from torch.nn import (
 from torch import (
     Tensor,
     randn_like,
-    exp,
-    prod,
+    sqrt,
     ones_like,
     zeros_like
     )
@@ -51,115 +50,44 @@ from typing import List, Any
 
 class Encoder(Module):
     def __init__(self,
-                 channels_h:List[int],
+                 input_dim:List[int],
+                 channels:List[int],
                  kernel_size:List[int],
-                 stride_h:List[int],
-                 padding_h:List[int],
-                 dilation_h:List[int],
-                 groups_h:List[int],
-                 padding_mode_h:List[str],
-                 bias_h:List[bool],
-                 batch_norm_h:List[bool],
-                 ff_h:List[int],
+                 stride:List[int],
+                 padding:List[int],
+                 padding_mode:List[str],
+                 dilation:List[int],
+                 groups:List[int],
+                 bias:List[bool],
+                 batch_norm:List[bool],
+                 ff_layersh:List[int],
                  ff_acth:List[Any],
-                 latent_dim:int,
+                 ffmu_layer: List[int],
+                 ffmu_act: List[Any],
+                 ffvar_layer: List[int],
+                 ffvar_act: List[Any]
                  ):
         super(Encoder, self).__init__()
         
-    def conv_layers(self):
-        
-        layers = []
-        for i in range(1, self.num_conv_layers):
+        self.id, self.ch, self.ksh, self.sh, self.ph, self.dh, self.gh, self.pmodh, \
+        self.bh, self.bnormh, self.ffh_layers, self.ffh_act, self.ffmu_layers, \
+        self.ffh_act, self.ffmu_layer, self.ffvar_layer, self.ffmu_act, self.ffvar_act \
+            = input_dim, channels_h, kernel_size_h, stride_h, padding_h, dilation_h, \
+                groups_h, padding_mode_h, bias_h, batch_norm_h, ff_layersh, ff_acth, \
+                ffmu_layer, ffvar_layer, ffmu_act, ffvar_act
+                
+        self.num_conv, self.num_lin, self.num_mu, self.num_var = len(channels_h), \
+            len(ff_layersh), len(ffmu_layer), len(ffvar_layer)
             
-            conv=Conv2d(in_channels = self.ch[i-1],
-                        out_channels = self.ch[i],
-                        kernel_size = self.ksh[i-1],
-                        stride = self.sh[i-1],
-                        dilation = self.dh[i-1],
-                        groups = self.gh[i-1],
-                        bias = self.bh[i-1],
-                        padding_mode = self.pmodh[i-1])
-
-            layers.append(conv)
+        self.convod = self.linear_dim()
         
-            if self.batch_norm_h[i-1]:
-                layers.append(BatchNorm2d(self.channels_h[i]))
-            
-        return Sequential(*layers)
-        
-#%% Decoder
-
-class Decoder(Module):
-    def __init__(self, 
-                 ):
-        super(Decoder, self).__init__()
-        
-
-#%% Deep Convolutional Variational-Autoencoder
-
-class DCVAE(Module):
-    def __init__(self,
-                 input_dim = [32, 32],
-                 act_h = [ELU, ELU, ELU, ELU, ELU],
-                 channels_h:List[int] = [3, 32, 32, 64],
-                 kernel_size_h:List[int] = [4, 4, 4, 4],
-                 stride_h:List[int] = [2, 2, 2, 2],
-                 padding_h:List[int] = [0, 0, 0, 0],
-                 dilation_h:List[int] = [1, 1, 1, 1],
-                 groups_h:List[int] = [1, 1, 1, 1],
-                 padding_mode_h = ['zeros', 'zeros', 'zeros', 'zeros'],
-                 bias_h:List[bool] = [False, False, False, False],
-                 batch_norm_h:List[bool] = [True, True, True, True],
-                 ff_h:List[int] = [256],
-                 ff_acth = [Identity],
-                 latent_dim:int = 32,
-                 ff_g:List[int] = [256],
-                 ff_actg = [Identity],
-                 act_g = [ELU, ELU, ELU, ELU, ELU],
-                 channels_g = [64, 64, 32, 32, 32, 3],
-                 kernel_size_g = [6, 4, 4, 4, 3],
-                 stride_g = [2, 2, 2, 2, 1],
-                 padding_g:List[int] = [0, 0, 0, 0],
-                 dilation_g:List[int] = [1, 1, 1, 1],
-                 batch_norm_g:List[bool] = [True, True, True, True],
-                 ):
-        super(DCVAE, self).__init__()
-        
-        self.num_conv = len(channels_h)
-        self.num_linearh = len(ff_h)
-        self.input_dim = input_dim
-        self.acth = act_h
-        self.ch = channels_h
-        self.ksh = kernel_size_h
-        self.sh = stride_h
-        self.ph = padding_h
-        self.dh = dilation_h
-        self.gh = groups_h
-        self.pmodh = padding_mode_h
-        self.biash = bias_h
-        self.bnormh = batch_norm_h
-        self.linear_dim = prod(self.linear_dim, dtype=int)
-        
-        self.ff_h = ff_h
-        self.ff_acth = ff_acth
-        self.latent_dim = latent_dim
-        self.ff_g = ff_g
-        self.ff_actg = ff_actg
-        
-        self.actg = act_g
-        self.cg = channels_g
-        self.ksg = kernel_size_g
-        self.sg = stride_g
-        self.pg = padding_g
-        self.dg = dilation_g
-        self.bnormg = batch_norm_g
-        
+        self.conv_encoder, self.lienar_encoder = self.conv_layers(), self.linear_layers()
+    
     def linear_dim(self):
         
-        H_in, W_in = self.input_dim
-        for i in range(1, self.num_conv_layers):
-            pad, dil, ksize, stride = self.padding_h[i], self.dilation_h[i], \
-                                        self.kernel_size_h[i], self.stride_h[i]
+        H_in, W_in = self.id
+        for i in range(1, self.num_conv):
+            pad, dil, ksize, stride = self.ph[i], self.dh[i], self.ksh[i], self.sh[i]
             
             pad_H, pad_W, dil_H, dil_W, ksize_H, ksize_W, stride_H, stride_W = \
                 pad[0], pad[-1], dil[0], dil[-1], ksize[0], ksize[-1], stride[0], stride[-1]
@@ -168,11 +96,11 @@ class DCVAE(Module):
             W_in = (W_in+2*pad_W-dil_W*(ksize_W-1)-1)/(stride_W)+1
             
         return H_in, W_in
-        
+    
     def conv_layers(self):
         
         layers = []
-        for i in range(1, self.num_conv_layers):
+        for i in range(1, self.num_conv):
             
             conv=Conv2d(in_channels = self.ch[i-1],
                         out_channels = self.ch[i],
@@ -181,19 +109,91 @@ class DCVAE(Module):
                         dilation = self.dh[i-1],
                         groups = self.gh[i-1],
                         bias = self.bh[i-1],
-                        padding_mode = self.pmodh[i-1])
+                        padding_mode = self.pmodh[i-1]
+                        )
 
             layers.append(conv)
         
             if self.batch_norm_h[i-1]:
-                layers.append(BatchNorm2d(self.channels_h[i]))
+                layers.append(BatchNorm2d(self.ch[i]))
             
         return Sequential(*layers)
+    
+    def linear_layers(self):
+        
+        layers = []
+        layers.append(Linear(self.convod, self.ffh_layers[0]))
+        layers.append(self.ffh_act[0]())
+        for i in range(1, self.num_lin):
+            layers.append(Linear(self.ffh[i-1], self.ffh_layers[i]))
+            layers.append(self.ffh_act[i-1]())
+
+        return Sequential(*layers)
+    
+    def mu_layers(self):
+        
+        layers = []
+        for i in range(1, self.nummu_layers):
+            layers.append(Linear(self.ffmu_layer[i-1], self.ffmu_layer[i]))
+            layers.append(self.ffmu_act[i-1]())
+            
+        return Sequential(*layers)
+    
+    def var_layers(self):
+        
+        layers = []
+        for i in range(1, self.numvar_layers):
+            layers.append(Linear(self.fc_var[i-1], self.fc_var[i]))
+            layers.append(self.fc_var_act[i-1]())
+            
+        return Sequential(*layers)
+    
+    def reparametrize(self, mu, std):
+        
+        eps = randn_like(std)
+        z = mu + (eps * std)
+        
+        return z
+    
+    def forward(self, x):
+        
+        x_encoded = self.linear_encoder(self.conv_layers(x).view(x.size[0], -1))
+        mu, std = self.mu_net(x_encoded), sqrt(self.var_net(x_encoded))
+        z = self.reparametrize(mu, std)
+        
+        return z, mu, std
+        
+#%% Decoder
+
+class Decoder(Module):
+    def __init__(self, 
+                 output_dim:int,
+                 ff_layersg:List[int],
+                 ff_actg:List[Any],
+                 channels_g:List[int],
+                 kernel_size:List[int],
+                 stride:List[int],
+                 padding:List[int],
+                 output_padding:List[int],
+                 groups:List[int],
+                 bias:List[bool],
+                 dilation:List[int],
+                 batch_norm:List[bool]
+                 ):
+        super(Decoder, self).__init__()
+        
+        self.od, self.cg, self.ksg, self.sg, self.pg, self.dg, self.gg, self.opg, \
+        self.bg, self.bnormg, self.ffg_layers, self.ffg_act \
+            = output_dim, channels_g, kernel_size, stride, padding, dilation, \
+                groups, output_padding, bias, batch_norm, ff_layersg, ff_actg
+                
+        self.num_tconv, self.num_lin, self.lin_dim = len(channels_g), len(ff_layersg), ff_layersg[-1]
+        self.convt_encoder, self.lienar_encoder = self.convt_layers(), self.linear_layers()
     
     def convt_layers(self):
         
         layers = []
-        for i in range(1, self.num_conv_layers):
+        for i in range(1, self.num_conv):
             
             conv=Conv2d(in_channels = self.ch[i-1],
                         out_channels = self.ch[i],
@@ -202,59 +202,148 @@ class DCVAE(Module):
                         dilation = self.dh[i-1],
                         groups = self.gh[i-1],
                         bias = self.bh[i-1],
-                        padding_mode = self.pmodh[i-1])
+                        padding_mode = self.pmodh[i-1]
+                        )
 
             layers.append(conv)
         
             if self.batch_norm_h[i-1]:
-                layers.append(BatchNorm2d(self.channels_h[i]))
+                layers.append(BatchNorm2d(self.ch[i]))
             
         return Sequential(*layers)
+    
+    def linear_layers(self):
         
-    def linear_hlayers(self):
-        
-        layer = []
-        layer.append(self.linear_dim, self.ffh[0])
-        layer.append(self.ffh_act[0]())
-        for i in range(1, self.num_linearh-1):
-            layer.append(Linear(self.ffh[i-1], self.ffh[i]))
-            layer.append(self.ffh_act[i-1]())
+        layers = []
+        layers.append(Linear(self.convod, self.ffh_layers[0]))
+        layers.append(self.ffh_act[0]())
+        for i in range(1, self.num_lin):
+            layers.append(Linear(self.ffh[i-1], self.ffh_layers[i]))
+            layers.append(self.ffh_act[i-1]())
 
-        return Sequential(*layer)
+        return Sequential(*layers)
     
-    def linear_glayers(self):
+    def forward(self, z):
         
-        layer = []
-        layer.append(self.latent_dim, self.ffg[0])
-        layer.append(self.ffg_act[0]())
-        for i in range(1, self.num_linearh-1):
-            layer.append(Linear(self.ffg[i-1], self.ffg[i]))
-            layer.append(self.ffg_act[i-1]())
-            
-        layer.append(Linear(self.fc_h[-1], self.latent_dim))
-            
-        return Sequential(*layer)
+        return self.decoder(self.linear_encoder(z).view(z.size(0), self.lin_dim, 1, 1))
+
+#%% Deep Convolutional Variational-Autoencoder
+
+class DC2DVAE(Module):
+    def __init__(self,
+                 input_dim:List[int],
+                 channels_h:List[int],
+                 kernel_size_h:List[int],
+                 stride_h:List[int],
+                 padding_h:List[int],
+                 dilation_h:List[int],
+                 groups_h:List[int],
+                 padding_mode_h:List[str],
+                 bias_h:List[bool],
+                 batch_norm_h:List[bool],
+                 ff_layersh:List[int],
+                 ff_acth:List[Any],
+                 ffmu_layer: List[int],
+                 ffmu_act: List[Any],
+                 ffvar_layer: List[int],
+                 ffvar_act: List[Any],
+                 ff_layersg:List[int],
+                 ff_actg:List[Any],
+                 channels_g:List[int],
+                 kernel_size:List[int],
+                 stride:List[int],
+                 padding:List[int],
+                 output_padding:List[int],
+                 groups:List[int],
+                 bias:List[bool],
+                 dilation:List[int],
+                 batch_norm:List[bool]
+                 ):
+        super(DC2DVAE, self).__init__()
+        
+        self.encoder = Encoder(input_dim,
+                                channels_h,
+                                kernel_size_h,
+                                stride_h,
+                                padding_h,
+                                dilation_h,
+                                groups_h,
+                                padding_mode_h,
+                                bias_h,
+                                batch_norm_h,
+                                ff_layersh,
+                                ff_acth,
+                                ffmu_layer,
+                                ffmu_act,
+                                ffvar_layer,
+                                ffvar_act
+                                )
+        
+        self.decoder = Decoder(output_dim,
+                                ff_layersg,
+                                ff_actg,
+                                channels_g,
+                                kernel_size,
+                                stride,
+                                padding,
+                                output_padding,
+                                groups,
+                                bias,
+                                dilation,
+                                batch_norm
+                                )
+        
+        # for the gaussian likelihood
+        self.exp_scale = Parameter(Tensor([1.0]))
+        
+    def gaussian_likelihood(self, x_hat, x):
+        
+        dist = Normal(x_hat, self.exp_scale)
+
+        # measure prob of seeing image under p(x|z)
+        log_pxz = dist.log_prob(x)
+        
+        return log_pxz.sum(dim=1)
+
+    def kl_divergence(self, z, mu, std):
+        # --------------------------
+        # Monte carlo KL divergence
+        # --------------------------
+        # 1. define the first two probabilities (in this case Normal for both)
+        p, q = Normal(zeros_like(mu), ones_like(std)), Normal(mu, std)
+
+        # 2. get the probabilities from the equation
+        log_qzx, log_pz = q.log_prob(z), p.log_prob(z)
+
+        # kl
+        kl = (log_qzx - log_pz).sum(-1)
+        
+        return kl
     
-    def mu_layers(self):
+    def forward(self, x):
         
-        layer = []
+        z, mu, std = self.encoder(x)
+        x_hat = self.decoder(z)
+                
+        # compute the ELBO with and without the beta parameter: 
+        # `L^\beta = E_q [ log p(x|z) - \beta * D_KL(q(z|x) | p(z))`
+        # where `D_KL(q(z|x) | p(z)) = log q(z|x) - log p(z)`
+        kld, rec_loss = self.kl_divergence(z, mu, std).mean(), -self.gaussian_likelihood(x_hat, x).mean()
         
-        for i in range(1, self.num_fc_mu):
-            layer.append(Linear(self.fc_mu[i-1], self.fc_mu[i]))
-            layer.append(self.fc_mu_act[i-1]())
-            
-        return Sequential(*layer)
+        # elbo
+        elbo = kld + rec_loss
+        
+        return z, x_hat, mu, std, kld, rec_loss, elbo
     
-    def var_hlayers(self):
+    def h(self, x):
         
-        layer = []
+        return self.encoder(x)[1]
         
-        for i in range(1, self.num_fc_var):
-            layer.append(Linear(self.ff_var[i-1], self.ff_var[i]))
-            layer.append(self.ff_var_act[i-1]())
-            
-        return Sequential(*layer)
+    def g(self, z):
+                
+        return self.decoder(z)
         
+    
         
         
         

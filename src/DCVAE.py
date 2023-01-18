@@ -60,18 +60,15 @@ class Encoder(Module):
                  groups:List[int],
                  bias:List[bool],
                  batch_norm:List[bool],
-                 ff_layersh:List[int],
-                 ff_acth:List[Any],
-                 ffmu_layer: List[int],
-                 ffmu_act: List[Any],
-                 ffvar_layer: List[int],
+                 ffh_layer:List[Any],
+                 ffmu_layer: List[Any],
+                 ffvar_layer: List[Any],
                  ffvar_act: List[Any]
                  ):
         super(Encoder, self).__init__()
         
         self.id, self.ch, self.ksh, self.sh, self.ph, self.dh, self.gh, self.pmodh, \
-        self.bh, self.bnormh, self.ffh_layers, self.ffh_act, self.ffmu_layers, \
-        self.ffh_act, self.ffmu_layer, self.ffvar_layer, self.ffmu_act, self.ffvar_act \
+        self.bh, self.bnormh, self.ffh_layer, self.ffmu_layer, self.ffvar_layer \
             = input_dim, channels_h, kernel_size_h, stride_h, padding_h, dilation_h, \
                 groups_h, padding_mode_h, bias_h, batch_norm_h, ff_layersh, ff_acth, \
                 ffmu_layer, ffvar_layer, ffmu_act, ffvar_act
@@ -168,8 +165,7 @@ class Encoder(Module):
 class Decoder(Module):
     def __init__(self, 
                  output_dim:int,
-                 ff_layersg:List[int],
-                 ff_actg:List[Any],
+                 ffg_layer:List[Any],
                  channels_g:List[int],
                  kernel_size:List[int],
                  stride:List[int],
@@ -241,14 +237,10 @@ class DC2DVAE(Module):
                  padding_mode_h:List[str],
                  bias_h:List[bool],
                  batch_norm_h:List[bool],
-                 ff_layersh:List[int],
-                 ff_acth:List[Any],
-                 ffmu_layer: List[int],
-                 ffmu_act: List[Any],
-                 ffvar_layer: List[int],
-                 ffvar_act: List[Any],
-                 ff_layersg:List[int],
-                 ff_actg:List[Any],
+                 ffh_layer:List[Any],
+                 ffmu_layer: List[Any],
+                 ffvar_layer: List[Any],
+                 ffg_layer:List[Any],
                  channels_g:List[int],
                  kernel_size:List[int],
                  stride:List[int],
@@ -271,17 +263,13 @@ class DC2DVAE(Module):
                                 padding_mode_h,
                                 bias_h,
                                 batch_norm_h,
-                                ff_layersh,
-                                ff_acth,
+                                ffh_layer,
                                 ffmu_layer,
-                                ffmu_act,
-                                ffvar_layer,
-                                ffvar_act
+                                ffvar_layer
                                 )
         
         self.decoder = Decoder(output_dim,
-                                ff_layersg,
-                                ff_actg,
+                                ffg_layer,
                                 channels_g,
                                 kernel_size,
                                 stride,

@@ -35,6 +35,7 @@ from torch.nn import (
     Parameter,
     Sequential,
     Linear,
+    BatchNorm1d,
     Identity,
     Sigmoid,
     ELU
@@ -46,18 +47,15 @@ from typing import List, Any
 
 class Encoder(Module):
     def __init__(self, 
-                 ffh_layer: List[int],
-                 ffh_act: List[Any],
-                 ffmu_layer: List[int],
-                 ffmu_act: List[Any],
-                 ffvar_layer: List[int],
-                 ffvar_act: List[Any]
+                 input_dim,
+                 ffh_layer:List[Any],
+                 ffmu_layer:List[Any],
+                 ffvar_layer:List[Any],
                  ):
         super(Encoder, self).__init__()
         
-        self.ffh_layer, self.ffh_act, self.ffmu_layer, self.ffmu_act, \
-            self.ffvar_layer, self.ffvar_act = ffh_layer, ffh_act, ffmu_layer, ffmu_act, \
-                                                ffvar_layer, ffvar_act
+        self.id, self.ffh_layer, self.ffmu_layer, self.ffvar_layer = input_dim, \
+            ffh_layer, ffmu_layer, ffvar_layer
                                                 
         self.numh_layers, self.nummu_layers, self.numvar_layers = \
             len(ffh_layer), len(ffmu_layer), len(ffvar_layer)
@@ -67,30 +65,57 @@ class Encoder(Module):
                                                 
     def encoder_layers(self):
         
-        layers = []
+        layer = []
+        in_feat, bias, batch, act = self.ffh_layer[0]
+        layer.append(Linear(self.id, in_feat, bias))
+        if batch:
+            layer.append(BatchNorm1d(in_feat))
+        layer.append(act)
         for i in range(1, self.numh_layers):
-            layers.append(Linear(self.ffh_layer[i-1], self.ffh_layer[i]))
-            layers.append(self.ffh_act[i-1]())
+            out_feat, bias, batch, act = self.ffh_layer[i]
+            layer.append(Linear(in_feat, out_feat, bias))
+            if batch:
+                layer.append(BatchNorm1d(out_feat))
+            layer.append(act)
+            in_feat = out_feat
             
-        return Sequential(*layers)
+        return Sequential(*layer)
     
     def mu_layers(self):
         
-        layers = []
+        layer = []
+        in_feat, bias, batch, act = self.ffmu_layer[0]
+        layer.append(Linear(self.id, in_feat, bias))
+        if batch:
+            layer.append(BatchNorm1d(in_feat))
+        layer.append(act)
         for i in range(1, self.nummu_layers):
-            layers.append(Linear(self.ffmu_layer[i-1], self.ffmu_layer[i]))
-            layers.append(self.ffmu_act[i-1]())
+            out_feat, bias, batch, act = self.ffmu_layer[i]
+            layer.append(Linear(in_feat, out_feat, bias))
+            if batch:
+                layer.append(BatchNorm1d(out_feat))
+            layer.append(act)
+            in_feat = out_feat
             
-        return Sequential(*layers)
+        return Sequential(*layer)
     
     def var_layers(self):
         
-        layers = []
+        layer = []
+        in_feat, bias, batch, act = self.ffvar_layer[0]
+        layer.append(Linear(self.id, in_feat, bias))
+        if batch:
+            layer.append(BatchNorm1d(in_feat))
+        layer.append(act)
         for i in range(1, self.numvar_layers):
-            layers.append(Linear(self.fc_var[i-1], self.fc_var[i]))
-            layers.append(self.fc_var_act[i-1]())
+            out_feat, bias, batch, act = self.ffvar_layer[i]
+            layer.append(Linear(in_feat, out_feat, bias))
+            if batch:
+                layer.append(BatchNorm1d(out_feat))
+            layer.append(act)
+            in_feat = out_feat
             
-        return Sequential(*layers)
+        return Sequential(*layer)
     
     def reparametrize(self, mu, std):
         
@@ -111,21 +136,29 @@ class Encoder(Module):
 
 class Decoder(Module):
     def __init__(self,
-                 ffg_layer: List[int],
-                 ffg_act: List[Any]
+                 input_dim:int,
+                 ffg_layer:List[Any],
                  ):
         super(Decoder, self).__init__()
     
-        self.ffg_layer, self.ffg_act = ffg_layer, ffg_act
-        self.numg_layers = len(ffg_layer)
+        self.id, self.ffg_layer, self.numg_layers = input_dim, ffg_layer, len(ffg_layer)
         self.decocer = self.decoder_layers()
         
     def decoder_layers(self):
         
         layer = []
+        in_feat, bias, batch, act = self.ffg_layer[0]
+        layer.append(Linear(self.id, in_feat, bias))
+        if batch:
+            layer.append(BatchNorm1d(in_feat))
+        layer.append(act)
         for i in range(1, self.numg_layers):
-            layer.append(Linear(self.ffg_layer[i-1], self.ffg_layer[i]))
-            layer.append(self.ffg_act[i-1]())
+            out_feat, bias, batch, act = self.ffg_layer[i]
+            layer.append(Linear(in_feat, out_feat, bias))
+            if batch:
+                layer.append(BatchNorm1d(out_feat))
+            layer.append(act)
+            in_feat = out_feat
             
         return Sequential(*layer)
     
@@ -138,24 +171,20 @@ class Decoder(Module):
 #The training script should be modified for the version below.
 class FFVAE(Module):
     def __init__(self,
-                 ffh_layer: List[int] = [3, 100],
-                 ffh_act: List[Any] = [ELU],
-                 ffg_layer: List[int] = [2, 100, 3],
-                 ffg_act: List[Any] = [ELU, Identity],
-                 ffmu_layer: List[int] = [100, 2],
-                 ffmu_act: List[Any] = [Identity],
-                 ffvar_layer: List[int] = [100, 2],
-                 ffvar_act: List[Any] = [Sigmoid]
+                 input_dim:int = 3,
+                 ffh_layer:List[Any] = [[100, True, False, ELU]],
+                 ffmu_layer:List[Any] = [[2, True, False, Identity]],
+                 ffvar_layer: List[int] = [[2, True, False, Sigmoid]],
+                 ffg_layer: List[int] = [[100, True, False, ELU], [3, True, False, Identity]],
                  ):
         super(FFVAE, self).__init__()
         
-        self.encoder = Encoder(ffh_layer, ffh_act, ffmu_layer, ffmu_act, 
-                               ffvar_layer, ffvar_act)
-        self.decoder = Decoder(ffg_layer, ffg_act)
+        self.encoder = Encoder(input_dim, ffh_layer, ffmu_layer, ffvar_layer)
+        self.decoder = Decoder(ffmu_layer[-1][0], ffg_layer)
         
         # for the gaussian likelihood
         self.exp_scale = Parameter(Tensor([1.0]))
-    
+        
     def gaussian_likelihood(self, x_hat, x):
         
         dist = Normal(x_hat, self.exp_scale)

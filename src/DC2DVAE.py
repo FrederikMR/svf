@@ -27,12 +27,15 @@ from torch.nn import (
     BatchNorm1d, 
     ConvTranspose2d,
     Parameter,
+    Identity
     )
 
 from torch import (
+    int32,
     Tensor,
     randn_like,
     sqrt,
+    prod,
     ones_like,
     zeros_like
     )
@@ -57,39 +60,40 @@ class Encoder(Module):
                  groups:List[int],
                  bias:List[bool],
                  batch_norm:List[bool],
+                 conv_act:List[Any],
                  ffh_layer:List[Any],
                  ffmu_layer: List[Any],
                  ffvar_layer: List[Any],
-                 ffvar_act: List[Any]
                  ):
         super(Encoder, self).__init__()
         
         self.id, self.ch, self.ksh, self.sh, self.ph, self.dh, self.gh, self.pmodh, \
-        self.bh, self.bnormh, self.ffh_layer, self.ffmu_layer, self.ffvar_layer \
+        self.bh, self.bnormh, self.conv_act, self.ffh_layer, self.ffmu_layer, self.ffvar_layer \
             = input_dim, channels, kernel_size, stride, padding, dilation, \
-                groups, padding_mode, bias, batch_norm, ffh_layer, ffmu_layer, \
+                groups, padding_mode, bias, batch_norm, conv_act, ffh_layer, ffmu_layer, \
                     ffvar_layer
                 
         self.num_conv, self.num_lin, self.num_mu, self.num_var = len(channels), \
             len(ffh_layer), len(ffmu_layer), len(ffvar_layer)
             
-        self.convod, self.ld = self.linear_dim(), ffh_layer[-1][0]
+        self.convod, self.ld = int(channels[-1]*prod(self.linear_dim())), ffh_layer[-1][0]
         
-        self.conv_encoder, self.lienar_encoder = self.conv_layers(), self.linear_layers()
+        self.conv_encoder, self.linear_encoder, self.mu_net, self.var_net = \
+            self.conv_layers(), self.linear_layers(), self.mu_layers(), self.var_layers()
     
     def linear_dim(self):
         
         _, H_in, W_in = self.id
-        for i in range(1, self.num_conv):
+        for i in range(0, self.num_conv):
             pad, dil, ksize, stride = self.ph[i], self.dh[i], self.ksh[i], self.sh[i]
             
             pad_H, pad_W, dil_H, dil_W, ksize_H, ksize_W, stride_H, stride_W = \
                 pad[0], pad[-1], dil[0], dil[-1], ksize[0], ksize[-1], stride[0], stride[-1]
                 
-            H_in = (H_in+2*pad_H-dil_H*(ksize_H-1)-1)/(stride_H)+1
-            W_in = (W_in+2*pad_W-dil_W*(ksize_W-1)-1)/(stride_W)+1
+            H_in = int((H_in+2*pad_H-dil_H*(ksize_H-1)-1)/(stride_H)+1)
+            W_in = int((W_in+2*pad_W-dil_W*(ksize_W-1)-1)/(stride_W)+1)
             
-        return H_in, W_in
+        return Tensor([H_in, W_in])
     
     def conv_layers(self):
         
@@ -104,6 +108,7 @@ class Encoder(Module):
                     padding_mode = self.pmodh[0]
                     )
         layers.append(conv)
+        layers.append(self.conv_act[0]())
         if self.bnormh[0]:
             layers.append(BatchNorm2d(self.ch[0]))
             
@@ -120,8 +125,10 @@ class Encoder(Module):
                         )
 
             layers.append(conv)
+            
+            layers.append(self.conv_act[i]())
         
-            if self.batch_norm_h[i]:
+            if self.bnormh[i]:
                 layers.append(BatchNorm2d(self.ch[i]))
             
         return Sequential(*layers)
@@ -133,13 +140,13 @@ class Encoder(Module):
         layer.append(Linear(self.convod, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.num_lin):
             out_feat, bias, batch, act = self.ffh_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
@@ -151,13 +158,13 @@ class Encoder(Module):
         layer.append(Linear(self.ld, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.num_mu):
             out_feat, bias, batch, act = self.ffmu_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
@@ -169,13 +176,13 @@ class Encoder(Module):
         layer.append(Linear(self.ld, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.num_var):
             out_feat, bias, batch, act = self.ffvar_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
@@ -189,7 +196,7 @@ class Encoder(Module):
     
     def forward(self, x):
         
-        x_encoded = self.linear_encoder(self.conv_layers(x).view(x.size[0], -1))
+        x_encoded = self.linear_encoder(self.conv_encoder(x).view(x.size(0), -1))
         mu, std = self.mu_net(x_encoded), sqrt(self.var_net(x_encoded))
         z = self.reparametrize(mu, std)
         
@@ -210,14 +217,15 @@ class Decoder(Module):
                  groups:List[int],
                  bias:List[bool],
                  dilation:List[int],
-                 batch_norm:List[bool]
+                 batch_norm:List[bool],
+                 convt_act:List[Any]
                  ):
         super(Decoder, self).__init__()
         
         self.id, self.cg, self.ksg, self.sg, self.pg, self.dg, self.gg, self.opg, \
-        self.pmodg, self.bg, self.bnormg, self.ffg_layer \
+        self.pmodg, self.bg, self.bnormg, self.convt_act, self.ffg_layer \
             = input_dim, channels, kernel_size, stride, padding, dilation, \
-                groups, output_padding, padding_mode, bias, batch_norm, ffg_layer
+                groups, output_padding, padding_mode, bias, batch_norm, convt_act, ffg_layer
                 
         self.num_tconv, self.num_lin, self.lin_dim = len(channels), len(ffg_layer), ffg_layer[-1][0]
         self.convt_encoder, self.linear_encoder = self.convt_layers(), self.linear_layers()
@@ -225,7 +233,7 @@ class Decoder(Module):
     def convt_layers(self):
         
         layers = []
-        convt=ConvTranspose2d(in_channels = self.id,
+        convt=ConvTranspose2d(in_channels = self.lin_dim,
                     out_channels = self.cg[0],
                     kernel_size = self.ksg[0],
                     stride = self.sg[0],
@@ -236,6 +244,7 @@ class Decoder(Module):
                     dilation = self.dg[0],
                     padding_mode = self.pmodg[0]
                     )
+        layers.append(self.convt_act[0]())
         layers.append(convt)
         if self.bnormg[0]:
             layers.append(BatchNorm2d(self.cg[0]))
@@ -252,7 +261,7 @@ class Decoder(Module):
                         dilation = self.dg[i],
                         padding_mode = self.pmodg[i]
                         )
-
+            layers.append(self.convt_act[i]())
             layers.append(convt)
         
             if self.bnormg[i]:
@@ -267,20 +276,20 @@ class Decoder(Module):
         layer.append(Linear(self.id, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.num_lin):
             out_feat, bias, batch, act = self.ffg_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
     
     def forward(self, z):
         
-        return self.decoder(self.linear_encoder(z).view(z.size(0), self.lin_dim, 1, 1))
+        return self.convt_encoder(self.linear_encoder(z).view(z.size(0), self.lin_dim, 1, 1))
 
 #%% Deep Convolutional Variational-Autoencoder
 
@@ -302,6 +311,7 @@ class DC2DVAE(Module):
                  padding_mode_h:List[str] = None,
                  bias_h:List[bool] = None,
                  batch_norm_h:List[bool] = None,
+                 convh_act:List[Any] = None,
                  stride_g:List[int] = None,
                  padding_g:List[int] = None,
                  output_padding_g:List[int] = None,
@@ -309,7 +319,8 @@ class DC2DVAE(Module):
                  groups_g:List[int] = None,
                  bias_g:List[bool] = None,
                  dilation_g:List[int] = None,
-                 batch_norm_g:List[bool] = None
+                 batch_norm_g:List[bool] = None,
+                 convtg_act:List[Any] = None
                  ):
         super(DC2DVAE, self).__init__()
         
@@ -323,13 +334,15 @@ class DC2DVAE(Module):
         if dilation_h is None:
             dilation_h = [[1,1]]*num_convh
         if groups_h is None:
-            groups_h = [[1,1]]*num_convh
+            groups_h = [1]*num_convh
         if padding_mode_h is None:
             padding_mode_h = ['zeros']*num_convh
         if bias_h is None:
             bias_h = [True]*num_convh
         if batch_norm_h is None:
             batch_norm_h = [True]*num_convh
+        if convh_act is None:
+            convh_act = [Identity]*num_convh
             
         if stride_g is None:
             stride_g = [[1,1]]*num_convg
@@ -338,24 +351,29 @@ class DC2DVAE(Module):
         if output_padding_g is None:
             output_padding_g = [[0,0]]*num_convg
         if groups_g is None:
-            groups_g = [[1,1,]]*num_convg
+            groups_g = [1]*num_convg
         if bias_g is None:
             bias_g = [True]*num_convg
         if dilation_g is None:
             dilation_g = [[1,1]]*num_convg
         if padding_mode_g is None:
-            padding_mode_g = ['zeros']*num_convg        
+            padding_mode_g = ['zeros']*num_convg    
+        if batch_norm_g is None:
+            batch_norm_g = [True]*num_convg
+        if convtg_act is None:
+            convtg_act = [Identity]*num_convg
         
         self.encoder = Encoder(input_dim,
                                 channels_h,
                                 kernel_size_h,
                                 stride_h,
                                 padding_h,
+                                padding_mode_h,
                                 dilation_h,
                                 groups_h,
-                                padding_mode_h,
                                 bias_h,
                                 batch_norm_h,
+                                convh_act,
                                 ffh_layer,
                                 ffmu_layer,
                                 ffvar_layer
@@ -372,7 +390,8 @@ class DC2DVAE(Module):
                                 groups_g,
                                 bias_g,
                                 dilation_g,
-                                batch_norm_g
+                                batch_norm_g,
+                                convtg_act
                                 )
         
         # for the gaussian likelihood

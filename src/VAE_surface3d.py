@@ -15,49 +15,29 @@ https://debuggercafe.com/getting-started-with-variational-autoencoder-using-pyto
 https://github.com/DeepLearningDTU/02456-deep-learning-with-PyTorch/blob/master/7_Unsupervised/7.2-EXE-variational-autoencoder.ipynb
 """
 
+
 #%% Modules
 
-from torch.distirbutions import (
-    Normal
-    )
-
-from torch import (
-    Tensor,
-    randn_like,
-    exp,
-    sqrt,
-    zeros_like,
-    ones_like
-    )
-
-from torch.nn import (
-    Module,
-    Parameter,
-    Sequential,
-    Linear,
-    Identity,
-    Sigmoid,
-    ELU
-    )
-
+import torch
+from torch import nn
 from typing import List, Any
         
 #%% Using direct results for normal 
 #assumptions with variance
 
 #The training script should be modified for the version below.
-class FFVAE(Module):
+class VAE_3d(nn.Module):
     def __init__(self,
                  fc_h: List[int] = [3, 100],
                  fc_g: List[int] = [2, 100, 3],
                  fc_mu: List[int] = [100, 2],
                  fc_var: List[int] = [100, 2],
-                 fc_h_act: List[Any] = [ELU],
-                 fc_g_act: List[Any] = [ELU, Identity],
-                 fc_mu_act: List[Any] = [Identity],
-                 fc_var_act: List[Any] = [Sigmoid]
+                 fc_h_act: List[Any] = [nn.ELU],
+                 fc_g_act: List[Any] = [nn.ELU, nn.Identity],
+                 fc_mu_act: List[Any] = [nn.Identity],
+                 fc_var_act: List[Any] = [nn.Sigmoid]
                  ):
-        super(FFVAE, self).__init__()
+        super(VAE_3d, self).__init__()
     
         self.fc_h = fc_h
         self.fc_g = fc_g
@@ -73,48 +53,48 @@ class FFVAE(Module):
         self.num_fc_mu = len(fc_mu)
         self.num_fc_var = len(fc_var)
         
-        self.encoder = self.h_layers()
+        self.encoder = self.encode()
         self.mu_net = self.mu_layer()
         self.var_net = self.var_layer()
         self.decoder = self.decode()
         
         # for the gaussian likelihood
-        self.log_scale = Parameter(Tensor([0.0]))
+        self.log_scale = nn.Parameter(torch.Tensor([0.0]))
     
-    def h_layers(self):
+    def encode(self):
         
         layer = []
         
         for i in range(1, self.num_fc_h):
-            layer.append(Linear(self.fc_h[i-1], self.fc_h[i]))
+            layer.append(nn.Linear(self.fc_h[i-1], self.fc_h[i]))
             layer.append(self.fc_h_act[i-1]())
             #input_layer.append(self.activations_h[i](inplace=True))
             
-        return Sequential(*layer)
+        return nn.Sequential(*layer)
     
     def mu_layer(self):
         
         layer = []
         
         for i in range(1, self.num_fc_mu):
-            layer.append(Linear(self.fc_mu[i-1], self.fc_mu[i]))
+            layer.append(nn.Linear(self.fc_mu[i-1], self.fc_mu[i]))
             layer.append(self.fc_mu_act[i-1]())
             
-        return Sequential(*layer)
+        return nn.Sequential(*layer)
     
     def var_layer(self):
         
         layer = []
         
         for i in range(1, self.num_fc_var):
-            layer.append(Linear(self.fc_var[i-1], self.fc_var[i]))
+            layer.append(nn.Linear(self.fc_var[i-1], self.fc_var[i]))
             layer.append(self.fc_var_act[i-1]())
             
-        return Sequential(*layer)
+        return nn.Sequential(*layer)
     
     def rep_par(self, mu, std):
         
-        eps = randn_like(std)
+        eps = torch.randn_like(std)
         z = mu + (eps * std)
         return z
         
@@ -123,15 +103,15 @@ class FFVAE(Module):
         layer = []
         
         for i in range(1, self.num_fc_g):
-            layer.append(Linear(self.fc_g[i-1], self.fc_g[i]))
+            layer.append(nn.Linear(self.fc_g[i-1], self.fc_g[i]))
             layer.append(self.fc_g_act[i-1]())
             
-        return Sequential(*layer)
+        return nn.Sequential(*layer)
     
     def gaussian_likelihood(self, x_hat, logscale, x):
-        scale = exp(logscale)
+        scale = torch.exp(logscale)
         mean = x_hat
-        dist = Normal(mean, scale)
+        dist = torch.distributions.Normal(mean, scale)
 
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
@@ -143,8 +123,8 @@ class FFVAE(Module):
         # Monte carlo KL divergence
         # --------------------------
         # 1. define the first two probabilities (in this case Normal for both)
-        p = Normal(zeros_like(mu), ones_like(std))
-        q = Normal(mu, std)
+        p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
+        q = torch.distributions.Normal(mu, std)
 
         # 2. get the probabilities from the equation
         log_qzx = q.log_prob(z)
@@ -160,7 +140,7 @@ class FFVAE(Module):
         
         x_encoded = self.encoder(x)
         mu, var = self.mu_net(x_encoded), self.var_net(x_encoded)
-        std = sqrt(var)
+        std = torch.sqrt(var)
 
         z = self.rep_par(mu, std)
         x_hat = self.decoder(z)
@@ -168,21 +148,37 @@ class FFVAE(Module):
         # compute the ELBO with and without the beta parameter: 
         # `L^\beta = E_q [ log p(x|z) - \beta * D_KL(q(z|x) | p(z))`
         # where `D_KL(q(z|x) | p(z)) = log q(z|x) - log p(z)`
-        kld = self.kl_divergence(z, mu, std).mean()
-        rec_loss = -self.gaussian_likelihood(x_hat, self.log_scale, x).mean()
+        kld = self.kl_divergence(z, mu, std)
+        rec_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
         
         # elbo
-        elbo = kld + rec_loss
+        elbo = (kld - rec_loss)
+        elbo = elbo.mean()
         
-        return z, x_hat, mu, std, kld, rec_loss, elbo
+        return z, x_hat, mu, std, kld.mean(), -rec_loss.mean(), elbo
     
     def h(self, x):
         
-        return self.mu_net(self.encoder(x))
+        x_encoded = self.encoder(x)
+        mu, var = self.mu_net(x_encoded), self.var_net(x_encoded)
+        std = torch.sqrt(var)
+        
+        z = self.rep_par(mu, std)
+        
+        return mu
         
     def g(self, z):
-                
-        return self.decoder(z)
+        
+        x_hat = self.decoder(z)
+        
+        return x_hat
+
+#%% Simple test
+        
+#Simple test
+vae = VAE_3d()
+x = torch.tensor([[1,2,3], [4,5,6], [7, 8, 9]], dtype=torch.float)
+z, x_hat, mu, var, kld, rec_loss, elbo = vae(x)
 
 
 

@@ -54,8 +54,8 @@ class Encoder(Module):
                  ):
         super(Encoder, self).__init__()
         
-        self.id, self.ffh_layer, self.ffmu_layer, self.ffvar_layer = input_dim, \
-            ffh_layer, ffmu_layer, ffvar_layer
+        self.id, self.od, self.ffh_layer, self.ffmu_layer, self.ffvar_layer = input_dim, \
+            ffh_layer[-1][0], ffh_layer, ffmu_layer, ffvar_layer
                                                 
         self.numh_layers, self.nummu_layers, self.numvar_layers = \
             len(ffh_layer), len(ffmu_layer), len(ffvar_layer)
@@ -70,13 +70,13 @@ class Encoder(Module):
         layer.append(Linear(self.id, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.numh_layers):
             out_feat, bias, batch, act = self.ffh_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
@@ -85,16 +85,16 @@ class Encoder(Module):
         
         layer = []
         in_feat, bias, batch, act = self.ffmu_layer[0]
-        layer.append(Linear(self.id, in_feat, bias))
+        layer.append(Linear(self.od, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.nummu_layers):
             out_feat, bias, batch, act = self.ffmu_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
@@ -103,16 +103,16 @@ class Encoder(Module):
         
         layer = []
         in_feat, bias, batch, act = self.ffvar_layer[0]
-        layer.append(Linear(self.id, in_feat, bias))
+        layer.append(Linear(self.od, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.numvar_layers):
             out_feat, bias, batch, act = self.ffvar_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)
@@ -142,7 +142,7 @@ class Decoder(Module):
         super(Decoder, self).__init__()
     
         self.id, self.ffg_layer, self.numg_layers = input_dim, ffg_layer, len(ffg_layer)
-        self.decocer = self.decoder_layers()
+        self.decoder = self.decoder_layers()
         
     def decoder_layers(self):
         
@@ -151,13 +151,13 @@ class Decoder(Module):
         layer.append(Linear(self.id, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.numg_layers):
             out_feat, bias, batch, act = self.ffg_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)

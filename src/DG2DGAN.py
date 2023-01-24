@@ -139,7 +139,7 @@ class Discriminator(Module):
 #%% Generator
 
 class Generator(Module):
-    def __init__(self,
+    def __init__(self, 
                  input_dim:int,
                  ffg_layer:List[Any],
                  channels:List[int],
@@ -151,21 +151,23 @@ class Generator(Module):
                  groups:List[int],
                  bias:List[bool],
                  dilation:List[int],
-                 batch_norm:List[bool]):
-        super(Generator,self).__init__()
+                 batch_norm:List[bool],
+                 convt_act:List[Any]
+                 ):
+        super(Generator, self).__init__()
         
         self.id, self.cg, self.ksg, self.sg, self.pg, self.dg, self.gg, self.opg, \
-        self.pmodg, self.bg, self.bnormg, self.ffg_layer \
+        self.pmodg, self.bg, self.bnormg, self.convt_act, self.ffg_layer \
             = input_dim, channels, kernel_size, stride, padding, dilation, \
-                groups, output_padding, padding_mode, bias, batch_norm, ffg_layer
+                groups, output_padding, padding_mode, bias, batch_norm, convt_act, ffg_layer
                 
         self.num_tconv, self.num_lin, self.lin_dim = len(channels), len(ffg_layer), ffg_layer[-1][0]
         self.convt_encoder, self.linear_encoder = self.convt_layers(), self.linear_layers()
-
+    
     def convt_layers(self):
         
         layers = []
-        convt=ConvTranspose2d(in_channels = self.id,
+        convt=ConvTranspose2d(in_channels = self.lin_dim,
                     out_channels = self.cg[0],
                     kernel_size = self.ksg[0],
                     stride = self.sg[0],
@@ -176,6 +178,7 @@ class Generator(Module):
                     dilation = self.dg[0],
                     padding_mode = self.pmodg[0]
                     )
+        layers.append(self.convt_act[0]())
         layers.append(convt)
         if self.bnormg[0]:
             layers.append(BatchNorm2d(self.cg[0]))
@@ -192,7 +195,7 @@ class Generator(Module):
                         dilation = self.dg[i],
                         padding_mode = self.pmodg[i]
                         )
-    
+            layers.append(self.convt_act[i]())
             layers.append(convt)
         
             if self.bnormg[i]:
@@ -207,13 +210,13 @@ class Generator(Module):
         layer.append(Linear(self.id, in_feat, bias))
         if batch:
             layer.append(BatchNorm1d(in_feat))
-        layer.append(act)
+        layer.append(act())
         for i in range(1, self.num_lin):
             out_feat, bias, batch, act = self.ffg_layer[i]
             layer.append(Linear(in_feat, out_feat, bias))
             if batch:
                 layer.append(BatchNorm1d(out_feat))
-            layer.append(act)
+            layer.append(act())
             in_feat = out_feat
             
         return Sequential(*layer)

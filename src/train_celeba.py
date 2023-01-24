@@ -14,11 +14,7 @@ https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
 
 #%% Modules
 
-
-
 from torch import (
-    Tensor,
-    transpose,
     load,
     save,
     )
@@ -30,7 +26,6 @@ from torch.cuda import (
 from torch.utils.data import DataLoader
 
 from torch.utils.data import (
-    DataLoader,
     Subset
     )
 
@@ -139,11 +134,11 @@ def main():
     N = len(trainloader.dataset)
 
     model = DC2DVAE(input_dim = [3, 64, 64],
-                    channels_h = [3, 32, 32, 64],
+                    channels_h = [32, 32, 64, 64],
                     kernel_size_h = [[4,4], [4,4], [4,4], [4,4]],
                     channels_g = [64, 64, 32, 32, 3],
                     kernel_size_g = [[6,6], [4,4], [4,4], [4,4], [3,3]],
-                    ffh_layer = [[256, True, True, Identity]],
+                    ffh_layer = [[256, True, True, ELU]],
                     ffmu_layer = [[32, True, False, Identity]],
                     ffvar_layer = [[32, True, False, Sigmoid]],
                     ffg_layer = [[256, True, True, Identity]],
@@ -152,18 +147,18 @@ def main():
                     dilation_h = None,
                     groups_h = None,
                     padding_mode_h = None,
-                    bias_h = None,
+                    bias_h = [False, False, False, False],
                     batch_norm_h = None,
-                    convh_act = None,
+                    convh_act = [ELU, ELU, ELU, ELU],
                     stride_g = [[2,2], [2,2], [2,2], [2,2], [1,1]],
                     padding_g = None,
                     output_padding_g = None,
                     padding_mode_g = None,
                     groups_g = None,
-                    bias_g = None,
+                    bias_g = [False, False, False, False, False],
                     dilation_g = None,
                     batch_norm_g = None,
-                    convtg_act = None).to(device) #Model used
+                    convtg_act = [ELU, ELU, ELU, ELU, Identity]).to(device) #Model used
 
     optimizer = Adam(model.parameters(), lr=args.lr)
 
@@ -199,8 +194,6 @@ def main():
             running_loss_elbo += elbo.item()
             running_loss_rec += rec_loss.item()
             running_loss_kld += kld.item()
-            
-            print(f"Hallo")
 
             #del x, x_hat, mu, var, kld, rec_loss, elbo #In case you run out of memory
 
@@ -208,8 +201,6 @@ def main():
         train_loss_elbo.append(train_epoch_loss)
         train_loss_rec.append(running_loss_rec/N)
         train_loss_kld.append(running_loss_kld/N)
-        
-        print(f"Epoch {epoch+1}/{epochs} - loss: {train_epoch_loss:.4f}")
         
         current_time = datetime.datetime.now()
         if current_time - start_time >= time_diff:

@@ -31,7 +31,6 @@ from torch.nn import (
     )
 
 from torch import (
-    int32,
     Tensor,
     randn_like,
     sqrt,

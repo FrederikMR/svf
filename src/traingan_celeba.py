@@ -48,7 +48,6 @@ from torch.optim import (
 
 from torch.nn import (
     Identity,
-    Sigmoid,
     ELU
     )
 
@@ -111,9 +110,9 @@ def scale(img):
 def main():
 
     args = parse_args()
-    train_loss_elbo = [] #Elbo loss
-    train_loss_rec = [] #Reconstruction loss
-    train_loss_kld = [] #KLD loss
+    train_real_loss = [] #Elbo loss
+    train_fake_loss = [] #Reconstruction loss
+    train_loss = [] #KLD loss
     epochs = args.epochs
     time_diff = datetime.timedelta(hours=args.save_hours)
     start_time = datetime.datetime.now()
@@ -147,9 +146,7 @@ def main():
                     kernel_size_h = [[4,4], [4,4], [4,4], [4,4]],
                     channels_g = [64, 64, 32, 32, 3],
                     kernel_size_g = [[6,6], [4,4], [4,4], [4,4], [3,3]],
-                    ffh_layer = [[256, True, True, ELU]],
-                    ffmu_layer = [[32, True, False, Identity]],
-                    ffvar_layer = [[32, True, False, Sigmoid]],
+                    ffh_layer = [[256, True, True, ELU], [32, True, False, Identity]],
                     ffg_layer = [[256, True, True, Identity]],
                     stride_h = [[2,2],[2,2],[2,2],[2,2]],
                     padding_h = None,
@@ -177,25 +174,21 @@ def main():
     if args.con_training:
         checkpoint = load(args.load_model_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer_d.load_state_dict(checkpoint['optimizerd_state_dict'])
-        optimizer_g.load_state_dict(checkpoint['optimizerd_state_dict'])
+        optimizer_d.load_state_dict(checkpoint['optimizer_d_state_dict'])
+        optimizer_g.load_state_dict(checkpoint['optimizer_g_state_dict'])
         last_epoch = checkpoint['epoch']
-        elbo = checkpoint['ELBO']
-        rec_loss = checkpoint['rec_loss']
-        kld_loss = checkpoint['KLD']
-
-        train_loss_elbo = elbo
-        train_loss_rec = rec_loss
-        train_loss_kld = kld_loss
+        train_real_loss = checkpoint['real_loss']
+        train_fake_loss = checkpoint['fake_loss']
+        train_loss = checkpoint['loss']
     else:
         last_epoch = 0
 
-    sample_size = 16
+    sample_size = 32
     model.train()
     for epoch in range(last_epoch, epochs):
-        running_loss_elbo = 0.0
-        running_loss_rec = 0.0
-        running_loss_kld = 0.0
+        running_real_loss = 0.0
+        running_fake_loss = 0.0
+        running_loss = 0.0
         for x in trainloader:
             #x = x.to(args.device) #If DATA is not saved to device
             real_image = scale(x[0].to(device))
@@ -210,45 +203,41 @@ def main():
             optimizer_g.zero_grad()
             real_loss.backward()
             real_loss.step()
-            
-            #optimizer.zero_grad(set_to_none=True) #Based on performance tuning
-            optimizer.zero_grad()
-            elbo.backward()
-            optimizer.step()
 
-            running_loss_elbo += elbo.item()
-            running_loss_rec += rec_loss.item()
-            running_loss_kld += kld.item()
+            running_real_loss += real_loss.item()
+            running_fake_loss += fake_loss.item()
+            running_loss += sum_loss.item()
 
             #del x, x_hat, mu, var, kld, rec_loss, elbo #In case you run out of memory
 
-        train_epoch_loss = running_loss_elbo/N
-        train_loss_elbo.append(train_epoch_loss)
-        train_loss_rec.append(running_loss_rec/N)
-        train_loss_kld.append(running_loss_kld/N)
+        train_real_loss.append(running_real_loss/N)
+        train_fake_loss.append(running_fake_loss/N)
+        train_loss.append(running_loss/N)
         
         current_time = datetime.datetime.now()
         if current_time - start_time >= time_diff:
-            print(f"Epoch {epoch+1}/{epochs} - loss: {train_epoch_loss:.4f}")
+            print(f"Epoch {epoch+1}/{epochs} - loss: {train_loss:.4f}")
             checkpoint = args.save_model_path+'_epoch_'+str(epoch+1)+'.pt'
             save({'epoch': epoch+1,
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'ELBO': train_loss_elbo,
-                'rec_loss': train_loss_rec,
-                'KLD': train_loss_kld
+                'optimizer_d_state_dict': optimizer_d.state_dict(),
+                'optimizer_g_state_dict': optimizer_g.state_dict(),
+                'real_loss': train_real_loss,
+                'fake_loss': train_fake_loss,
+                'loss': train_loss
                 }, checkpoint)
             start_time = current_time
 
 
     checkpoint = args.save_model_path+'_epoch_'+str(epoch+1)+'.pt'
     save({'epoch': epoch+1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'ELBO': train_loss_elbo,
-                'rec_loss': train_loss_rec,
-                'KLD': train_loss_kld
-                }, checkpoint)
+        'model_state_dict': model.state_dict(),
+        'optimizer_d_state_dict': optimizer_d.state_dict(),
+        'optimizer_g_state_dict': optimizer_g.state_dict(),
+        'real_loss': train_real_loss,
+        'fake_loss': train_fake_loss,
+        'loss': train_loss
+        }, checkpoint)
 
     return
 
